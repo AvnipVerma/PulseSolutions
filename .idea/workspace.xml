@@ -6,12 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="7946a568-63ec-4b22-a3da-6baeb6b42f29" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/app/components/reference-form-page.jsx" beforeDir="false" afterPath="$PROJECT_DIR$/app/components/reference-form-page.jsx" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/repositories/document-repository.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/repositories/document-repository.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/services/document-service.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/document-service.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/services/search-service.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/search-service.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/services/vector-service.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/vector-service.js" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/utils/api-response.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/utils/api-response.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -71,7 +65,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1774078795366</updated>
-      <workItem from="1774078796991" duration="18275000" />
+      <workItem from="1774078796991" duration="19561000" />
     </task>
     <servers />
   </component>
