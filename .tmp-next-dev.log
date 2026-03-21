@@ -1,0 +1,15 @@
+
+> pulsesolutions@1.0.0 dev
+> next dev
+
+▲ Next.js 16.2.1 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://192.168.11.11:3000
+- Environments: .env
+✓ Ready in 2.2s
+
+Failed to obtain server version. Unable to check client-server compatibility. Set checkCompatibility=false to skip version check.
+ POST /api/search 500 in 2.2s (next.js: 1167ms, application-code: 1059ms)
+[?25h
+
+C:\Users\verma\OneDrive\Desktop\pulsesolutions>

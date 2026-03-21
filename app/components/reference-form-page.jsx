@@ -132,7 +132,16 @@ export function ReferenceFormPage() {
       throw new Error(payload.message ?? "Save failed.");
     }
 
-    toast.success("Document saved.");
+    if (payload.data?.vectorSynced === false) {
+      toast.warning(
+        payload.data.vectorSyncError
+          ? `Saved in MySQL, but Qdrant sync failed: ${payload.data.vectorSyncError}`
+          : "Saved in MySQL, but Qdrant sync failed.",
+      );
+    } else {
+      toast.success("Document saved.");
+    }
+
     resetForm();
     return true;
   }
@@ -158,13 +167,22 @@ export function ReferenceFormPage() {
       throw new Error(payload.message ?? "Upload failed.");
     }
 
-    toast.success(
-      `${payload.data.insertedCount} records saved${
-        payload.data.duplicateCount
-          ? `, ${payload.data.duplicateCount} duplicates skipped`
-          : ""
-      }.`,
-    );
+    const saveMessage = `${payload.data.insertedCount} records saved${
+      payload.data.duplicateCount
+        ? `, ${payload.data.duplicateCount} duplicates skipped`
+        : ""
+    }.`;
+
+    if (payload.data?.vectorSynced === false) {
+      toast.warning(
+        payload.data.vectorSyncError
+          ? `${saveMessage} Qdrant sync failed: ${payload.data.vectorSyncError}`
+          : `${saveMessage} Qdrant sync failed.`,
+      );
+    } else {
+      toast.success(saveMessage);
+    }
+
     resetForm();
     return true;
   }
@@ -330,7 +348,7 @@ export function ReferenceFormPage() {
         ? `Showing ${filteredAllEntries.length} of ${allEntries.length} documents`
         : `${allEntries.length} documents available in the database`
       : "Loading stored documents"
-    : `Query: ${searchQuery || "Untitled search"}`;
+    : `Semantic matches from Qdrant for: ${searchQuery || "Untitled search"}`;
 
   return (
     <main className="reference-form-layout">
@@ -343,7 +361,7 @@ export function ReferenceFormPage() {
 
           </div>
 
-          <form className="mt-6 space-y-3" onSubmit={handleSearch}>
+          <form className=" space-y-3" onSubmit={handleSearch}>
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
               <input
                 className="h-[44px] w-full rounded-md border border-slate-200 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-400"
@@ -353,7 +371,7 @@ export function ReferenceFormPage() {
                   setSearchFieldError("");
                   setSearchError("");
                 }}
-                placeholder="Enter a title or content keyword"
+                placeholder="Search by title or content keyword"
                 value={searchQuery}
               />
               <button
@@ -363,14 +381,14 @@ export function ReferenceFormPage() {
               >
                 {isSearching ? "Searching..." : "Search"}
               </button>
-              <button
-                className="h-[44px] shrink-0 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:min-w-[138px]"
-                disabled={isLoadingEntries}
-                onClick={handleShowAllEntries}
-                type="button"
-              >
-                {isLoadingEntries ? "Loading..." : "Show all entries"}
-              </button>
+              {/*<button*/}
+              {/*  className="h-[44px] shrink-0 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:min-w-[138px]"*/}
+              {/*  disabled={isLoadingEntries}*/}
+              {/*  onClick={handleShowAllEntries}*/}
+              {/*  type="button"*/}
+              {/*>*/}
+              {/*  {isLoadingEntries ? "Loading..." : "Show all entries"}*/}
+              {/*</button>*/}
             </div>
 
             {searchFieldError ? (
@@ -605,7 +623,7 @@ export function ReferenceFormPage() {
                   (result) => (
                   <article
                     className="rounded-xl border border-slate-200 bg-slate-50/60 px-5 py-4"
-                    key={result.id ?? result.url}
+                    key={result.id ?? result.title}
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
@@ -632,14 +650,16 @@ export function ReferenceFormPage() {
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       {result.content}
                     </p>
-                    <a
-                      className="mt-3 inline-block text-sm font-medium text-[#1d4ed8]"
-                      href={result.url}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {result.url}
-                    </a>
+                    {isViewingAllEntries ? (
+                      <a
+                        className="mt-3 inline-block text-sm font-medium text-[#1d4ed8]"
+                        href={result.url}
+                        rel="noreferrer"
+                        target="_blank"
+                      >
+                        {result.url}
+                      </a>
+                    ) : null}
                   </article>
                   ),
                 )}
