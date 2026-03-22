@@ -15,6 +15,7 @@ async function main() {
   console.info(`[embed] Found ${documents.length} documents.`);
 
   let processed = 0;
+  let synced = 0;
 
   for (let index = 0; index < documents.length; index += BATCH_SIZE) {
     const batch = documents.slice(index, index + BATCH_SIZE);
@@ -25,10 +26,19 @@ async function main() {
       `[embed] Processing batch ${batchNumber}/${totalBatches} (${batch.length} documents)...`,
     );
 
-    await syncDocumentsToVectorStore(batch);
+    const syncedInBatch = await syncDocumentsToVectorStore(batch);
     processed += batch.length;
+    synced += syncedInBatch;
 
-    console.info(`[embed] Progress: ${processed}/${documents.length}`);
+    console.info(
+      `[embed] Progress: ${processed}/${documents.length} (synced ${synced})`,
+    );
+  }
+
+  if (synced < documents.length) {
+    console.warn(
+      `[embed] Completed with skips: ${documents.length - synced} documents returned invalid embeddings.`,
+    );
   }
 
   console.info("[embed] Embedding sync complete.");

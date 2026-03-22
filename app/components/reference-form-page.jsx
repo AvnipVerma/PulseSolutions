@@ -1,7 +1,6 @@
 "use client";
 
-import { Trash2, X } from "lucide-react";
-import { useRouter } from "next/navigation";
+import { FileUp, Search, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
@@ -14,10 +13,6 @@ const initialState = {
   url: "",
 };
 
-function areManualFieldsEmpty(values) {
-  return !values.title.trim() && !values.content.trim() && !values.url.trim();
-}
-
 function getManualErrors(error) {
   const fieldErrors = error.flatten().fieldErrors;
 
@@ -28,43 +23,42 @@ function getManualErrors(error) {
   };
 }
 
-function normalizeEntryFilter(value) {
-  return String(value ?? "").toLowerCase().trim();
-}
-
-function matchesEntryFilter(entry, query) {
-  const normalizedQuery = normalizeEntryFilter(query);
-
-  if (!normalizedQuery) {
-    return true;
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) {
+    return "";
   }
 
-  return [entry.title, entry.content, entry.url].some((field) =>
-    normalizeEntryFilter(field).includes(normalizedQuery),
-  );
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
 }
 
 export function ReferenceFormPage() {
-  const router = useRouter();
   const [formData, setFormData] = useState(initialState);
+  const [manualErrors, setManualErrors] = useState({});
+  const [manualFormError, setManualFormError] = useState("");
+  const [isSavingManual, setIsSavingManual] = useState(false);
+
   const [file, setFile] = useState(null);
-  const [errors, setErrors] = useState({});
-  const [isSaving, setIsSaving] = useState(false);
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("search");
+  const [csvError, setCsvError] = useState("");
+  const [isUploadingCsv, setIsUploadingCsv] = useState(false);
+
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState("");
   const [searchFieldError, setSearchFieldError] = useState("");
   const [isSearching, setIsSearching] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [allEntries, setAllEntries] = useState([]);
-  const [allEntriesQuery, setAllEntriesQuery] = useState("");
-  const [allEntriesError, setAllEntriesError] = useState("");
-  const [isLoadingEntries, setIsLoadingEntries] = useState(false);
-  const [hasLoadedEntries, setHasLoadedEntries] = useState(false);
-  const [isDeletingId, setIsDeletingId] = useState(null);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
+
   const [deleteCandidate, setDeleteCandidate] = useState(null);
+  const [isDeletingId, setIsDeletingId] = useState(null);
 
   useEffect(() => {
     if (!isSearchOpen) {
@@ -74,14 +68,16 @@ export function ReferenceFormPage() {
     const previousOverflow = document.body.style.overflow;
 
     function handleKeyDown(event) {
-      if (event.key === "Escape") {
-        if (deleteCandidate) {
-          setDeleteCandidate(null);
-          return;
-        }
-
-        setIsSearchOpen(false);
+      if (event.key !== "Escape") {
+        return;
       }
+
+      if (deleteCandidate) {
+        setDeleteCandidate(null);
+        return;
+      }
+
+      setIsSearchOpen(false);
     }
 
     document.body.style.overflow = "hidden";
@@ -98,127 +94,127 @@ export function ReferenceFormPage() {
       ...current,
       [name]: value,
     }));
-    setErrors((current) => ({
+    setManualErrors((current) => ({
       ...current,
       [name]: undefined,
-      form: undefined,
     }));
+    setManualFormError("");
   }
 
-  function resetForm() {
+  function resetManualForm() {
     setFormData(initialState);
+    setManualErrors({});
+    setManualFormError("");
+  }
+
+  function resetCsvForm() {
     setFile(null);
-    setErrors({});
+    setCsvError("");
   }
 
-  async function saveManualDocument() {
-    const validation = manualDocumentSchema.safeParse(formData);
-
-    if (!validation.success) {
-      setErrors(getManualErrors(validation.error));
-      return false;
-    }
-
-    const response = await fetch("/api/documents/manual", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(validation.data),
-    });
-    const payload = await response.json();
-
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.message ?? "Save failed.");
-    }
-
-    if (payload.data?.vectorSynced === false) {
-      toast.warning(
-        payload.data.vectorSyncError
-          ? `Saved in MySQL, but Qdrant sync failed: ${payload.data.vectorSyncError}`
-          : "Saved in MySQL, but Qdrant sync failed.",
-      );
-    } else {
-      toast.success("Document saved.");
-    }
-
-    resetForm();
-    return true;
+  function resetAllInputs() {
+    resetManualForm();
+    resetCsvForm();
   }
 
-  async function uploadCsv() {
-    if (!file) {
-      setErrors({
-        form: "Enter document details or choose a CSV file.",
-      });
-      return false;
-    }
-
-    const formPayload = new FormData();
-    formPayload.append("file", file);
-
-    const response = await fetch("/api/documents/csv", {
-      method: "POST",
-      body: formPayload,
-    });
-    const payload = await response.json();
-
-    if (!response.ok || !payload.success) {
-      throw new Error(payload.message ?? "Upload failed.");
-    }
-
-    const saveMessage = `${payload.data.insertedCount} records saved${
-      payload.data.duplicateCount
-        ? `, ${payload.data.duplicateCount} duplicates skipped`
-        : ""
-    }.`;
-
-    if (payload.data?.vectorSynced === false) {
-      toast.warning(
-        payload.data.vectorSyncError
-          ? `${saveMessage} Qdrant sync failed: ${payload.data.vectorSyncError}`
-          : `${saveMessage} Qdrant sync failed.`,
-      );
-    } else {
-      toast.success(saveMessage);
-    }
-
-    resetForm();
-    return true;
-  }
-
-  async function handleSubmit(event) {
-    event.preventDefault();
-    setIsSaving(true);
-    setErrors({});
+  async function handleManualSubmit() {
+    setIsSavingManual(true);
+    setManualErrors({});
+    setManualFormError("");
 
     try {
-      if (!areManualFieldsEmpty(formData)) {
-        await saveManualDocument();
-      } else {
-        await uploadCsv();
+      const validation = manualDocumentSchema.safeParse(formData);
+
+      if (!validation.success) {
+        setManualErrors(getManualErrors(validation.error));
+        return;
       }
-    } catch (error) {
-      setErrors({
-        form: error instanceof Error ? error.message : "Save failed.",
+
+      const response = await fetch("/api/documents/manual", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(validation.data),
       });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message ?? "Save failed.");
+      }
+
+      if (payload.data?.vectorSynced === false) {
+        toast.warning(
+          payload.data.vectorSyncError
+            ? `Saved in DB, but Qdrant sync failed: ${payload.data.vectorSyncError}`
+            : "Saved in DB, but Qdrant sync failed.",
+        );
+      } else {
+        toast.success("Document saved.");
+      }
+
+      resetManualForm();
+    } catch (error) {
+      setManualFormError(
+        error instanceof Error ? error.message : "Save failed.",
+      );
     } finally {
-      setIsSaving(false);
+      setIsSavingManual(false);
     }
   }
 
-  function handleBack() {
-    if (window.history.length > 1) {
-      router.back();
+  async function handleCsvUpload() {
+    setIsUploadingCsv(true);
+    setCsvError("");
+
+    try {
+      if (!file) {
+        setCsvError("Choose a CSV file for batch upload.");
+        return;
+      }
+
+      const formPayload = new FormData();
+      formPayload.append("file", file);
+
+      const response = await fetch("/api/documents/csv", {
+        method: "POST",
+        body: formPayload,
+      });
+      const payload = await response.json();
+
+      if (!response.ok || !payload.success) {
+        throw new Error(payload.message ?? "Upload failed.");
+      }
+
+      const message = `Batch upload complete: ${payload.data.insertedCount} records saved.`;
+
+      if (payload.data?.vectorSyncQueued) {
+        toast.success(`${message} Vector sync queued in background.`);
+      } else if (payload.data?.vectorSynced === false) {
+        toast.warning(
+          payload.data.vectorSyncError
+            ? `${message} ${payload.data.vectorSyncError}`
+            : `${message} Qdrant sync failed.`,
+        );
+      } else {
+        toast.success(message);
+      }
+
+      resetCsvForm();
+    } catch (error) {
+      setCsvError(error instanceof Error ? error.message : "Upload failed.");
+    } finally {
+      setIsUploadingCsv(false);
+    }
+  }
+
+  async function handlePrimaryAction() {
+    if (file) {
+      await handleCsvUpload();
       return;
     }
 
-    resetForm();
-  }
-
-  function closeSearchModal() {
-    setDeleteCandidate(null);
-    setIsSearchOpen(false);
+    await handleManualSubmit();
   }
 
   async function handleSearch(event) {
@@ -237,9 +233,8 @@ export function ReferenceFormPage() {
       return;
     }
 
-    setIsSearching(true);
-    setModalMode("search");
     setIsSearchOpen(true);
+    setIsSearching(true);
     setSearchResults([]);
     setSearchError("");
     setSearchFieldError("");
@@ -268,43 +263,6 @@ export function ReferenceFormPage() {
     }
   }
 
-  async function handleShowAllEntries() {
-    setModalMode("all");
-    setIsSearchOpen(true);
-    setIsLoadingEntries(true);
-    setHasLoadedEntries(false);
-    setAllEntries([]);
-    setAllEntriesQuery("");
-    setAllEntriesError("");
-
-    try {
-      const response = await fetch("/api/documents");
-      const payload = await response.json();
-
-      if (!response.ok || !payload.success) {
-        throw new Error(payload.message ?? "Unable to load entries.");
-      }
-
-      setAllEntries(payload.data?.documents ?? []);
-    } catch (error) {
-      setAllEntries([]);
-      setAllEntriesError(
-        error instanceof Error ? error.message : "Unable to load entries.",
-      );
-    } finally {
-      setIsLoadingEntries(false);
-      setHasLoadedEntries(true);
-    }
-  }
-
-  function openDeleteConfirmation(document) {
-    setDeleteCandidate(document);
-  }
-
-  function closeDeleteConfirmation() {
-    setDeleteCandidate(null);
-  }
-
   async function handleDeleteDocument() {
     if (!deleteCandidate?.id) {
       return;
@@ -325,9 +283,6 @@ export function ReferenceFormPage() {
       setSearchResults((current) =>
         current.filter((entry) => entry.id !== deleteCandidate.id),
       );
-      setAllEntries((current) =>
-        current.filter((entry) => entry.id !== deleteCandidate.id),
-      );
       toast.success(`Deleted ${deleteCandidate.title}.`);
       setDeleteCandidate(null);
     } catch (error) {
@@ -337,216 +292,210 @@ export function ReferenceFormPage() {
     }
   }
 
-  const isViewingAllEntries = modalMode === "all";
-  const filteredAllEntries = allEntries.filter((entry) =>
-    matchesEntryFilter(entry, allEntriesQuery),
-  );
-  const modalHeading = isViewingAllEntries ? "All entries" : "Search results";
-  const modalSubheading = isViewingAllEntries
-    ? hasLoadedEntries && !isLoadingEntries
-      ? allEntriesQuery
-        ? `Showing ${filteredAllEntries.length} of ${allEntries.length} documents`
-        : `${allEntries.length} documents available in the database`
-      : "Loading stored documents"
-    : `Semantic matches from Qdrant for: ${searchQuery || "Untitled search"}`;
+  function closeSearchModal() {
+    setDeleteCandidate(null);
+    setIsSearchOpen(false);
+  }
+
+  const isPrimaryLoading = isSavingManual || isUploadingCsv;
+  const primaryLabel = file
+    ? isUploadingCsv
+      ? "Uploading..."
+      : "Upload CSV batch"
+    : isSavingManual
+      ? "Saving..."
+      : "Save document";
 
   return (
     <main className="reference-form-layout">
+      <div className="pointer-events-none absolute inset-x-0 top-[-220px] -z-10 h-[420px] bg-[radial-gradient(circle_at_20%_20%,rgba(14,165,233,0.18),transparent_45%),radial-gradient(circle_at_80%_10%,rgba(16,185,129,0.22),transparent_45%)]" />
+
       <div className="space-y-6">
-        <section className="reference-form-shell">
-          <div className="border-b border-slate-100 pb-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
+        <section className="reference-form-shell border-sky-200/80 bg-white/95">
+          <div className="border-b border-sky-100 pb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-sky-700/75">
               Search
             </p>
-
           </div>
 
-          <form className=" space-y-3" onSubmit={handleSearch}>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <input
-                className="h-[44px] w-full rounded-md border border-slate-200 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-400"
-                id="search-home"
-                onChange={(event) => {
-                  setSearchQuery(event.target.value);
-                  setSearchFieldError("");
-                  setSearchError("");
-                }}
-                placeholder="Search by title or content keyword"
-                value={searchQuery}
-              />
+          <form className="mt-5 space-y-3" onSubmit={handleSearch}>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-10 pr-4 text-sm outline-none transition focus:border-sky-300 focus:ring-2 focus:ring-sky-200"
+                  onChange={(event) => {
+                    setSearchQuery(event.target.value);
+                    setSearchFieldError("");
+                    setSearchError("");
+                  }}
+                  placeholder="Search by title or content"
+                  value={searchQuery}
+                />
+              </div>
               <button
-                className="h-[44px] shrink-0 rounded-md border border-slate-200 bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 sm:min-w-[96px]"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-900 bg-slate-900 px-4 text-sm font-semibold text-white transition hover:bg-slate-800 disabled:opacity-60 sm:min-w-[120px]"
                 disabled={isSearching}
                 type="submit"
               >
+                <Search className="h-4 w-4" />
                 {isSearching ? "Searching..." : "Search"}
               </button>
-              {/*<button*/}
-              {/*  className="h-[44px] shrink-0 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60 sm:min-w-[138px]"*/}
-              {/*  disabled={isLoadingEntries}*/}
-              {/*  onClick={handleShowAllEntries}*/}
-              {/*  type="button"*/}
-              {/*>*/}
-              {/*  {isLoadingEntries ? "Loading..." : "Show all entries"}*/}
-              {/*</button>*/}
             </div>
-
             {searchFieldError ? (
               <p className="text-sm text-red-600">{searchFieldError}</p>
             ) : null}
           </form>
         </section>
 
-        <section className="reference-form-shell">
-          <div className=" border-b border-slate-100 pb-5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-              Document Entry
+        <section className="reference-form-shell border-emerald-200/80 bg-white/95">
+          <div className="border-b border-emerald-100 pb-5">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-emerald-700/75">
+              Manual Entry
             </p>
           </div>
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="reference-form-grid items-start">
-              <label
-                className="pt-3 text-[15px] font-medium text-slate-900"
-                htmlFor="title"
-              >
+          <div className="mt-6 space-y-5">
+            <div>
+              <label className="text-sm font-semibold text-slate-800" htmlFor="title">
                 Title
               </label>
-              <div>
-                <input
-                  className="h-[42px] w-full rounded-md border border-slate-200 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-400"
-                  id="title"
-                  onChange={(event) => updateField("title", event.target.value)}
-                  value={formData.title}
-                />
-                {errors.title ? (
-                  <p className="mt-1 text-sm text-red-600">{errors.title}</p>
-                ) : null}
-              </div>
+              <input
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+                id="title"
+                onChange={(event) => updateField("title", event.target.value)}
+                value={formData.title}
+              />
+              {manualErrors.title ? (
+                <p className="mt-1 text-sm text-red-600">{manualErrors.title}</p>
+              ) : null}
             </div>
 
-            <div className="reference-form-grid items-start">
-              <label
-                className="pt-3 text-[15px] font-medium text-slate-900"
-                htmlFor="url"
-              >
+            <div>
+              <label className="text-sm font-semibold text-slate-800" htmlFor="url">
                 URL
               </label>
-              <div>
-                <input
-                  className="h-[42px] w-full rounded-md border border-slate-200 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-400"
-                  id="url"
-                  onChange={(event) => updateField("url", event.target.value)}
-                  value={formData.url}
-                />
-                {errors.url ? (
-                  <p className="mt-1 text-sm text-red-600">{errors.url}</p>
-                ) : null}
-              </div>
+              <input
+                className="mt-2 h-11 w-full rounded-xl border border-slate-200 bg-white px-4 text-sm outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+                id="url"
+                onChange={(event) => updateField("url", event.target.value)}
+                value={formData.url}
+              />
+              {manualErrors.url ? (
+                <p className="mt-1 text-sm text-red-600">{manualErrors.url}</p>
+              ) : null}
             </div>
 
-            <div className="reference-form-grid items-start">
-              <label
-                className="pt-3 text-[15px] font-medium text-slate-900"
-                htmlFor="content"
-              >
+            <div>
+              <label className="text-sm font-semibold text-slate-800" htmlFor="content">
                 Content
               </label>
-              <div>
-                <textarea
-                  className="min-h-[226px] w-full resize-y rounded-md border border-slate-200 bg-white px-4 py-3 text-sm outline-none ring-0 transition focus:border-slate-400"
-                  id="content"
-                  onChange={(event) => updateField("content", event.target.value)}
-                  value={formData.content}
-                />
-                {errors.content ? (
-                  <p className="mt-1 text-sm text-red-600">{errors.content}</p>
-                ) : null}
-              </div>
+              <textarea
+                className="mt-2 min-h-[200px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm outline-none transition focus:border-emerald-300 focus:ring-2 focus:ring-emerald-100"
+                id="content"
+                onChange={(event) => updateField("content", event.target.value)}
+                value={formData.content}
+              />
+              {manualErrors.content ? (
+                <p className="mt-1 text-sm text-red-600">{manualErrors.content}</p>
+              ) : null}
             </div>
 
-            <div className="reference-form-grid items-start">
+            {manualFormError ? (
+              <p className="text-sm text-red-600">{manualFormError}</p>
+            ) : null}
+          </div>
+
+          <div className="mt-6 border-t border-slate-100 pt-6">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-600">
+              CSV Upload
+            </p>
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50/80 p-4">
               <label
-                className="pt-3 text-[15px] font-medium text-slate-900"
+                className={`flex cursor-pointer items-center gap-4 rounded-xl border-2 border-dashed px-4 py-5 transition ${
+                  file
+                    ? "border-emerald-300 bg-emerald-50/70"
+                    : "border-slate-300 bg-white hover:border-emerald-300 hover:bg-emerald-50/40"
+                }`}
                 htmlFor="file"
               >
-                CSV File
+                <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white text-emerald-600 shadow-sm">
+                  <FileUp className="h-5 w-5" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-semibold text-slate-900">
+                    {file ? file.name : "Click to choose CSV file"}
+                  </span>
+                  <span className="mt-1 block text-xs text-slate-500">
+                    {file
+                      ? `${formatBytes(file.size)} selected for batch insert.`
+                      : "Entire CSV will be inserted in DB batches."}
+                  </span>
+                </span>
               </label>
-              <div>
-                <input
-                  className="block w-full rounded-md border border-slate-200 bg-white text-sm file:mr-4 file:border-0 file:border-r file:border-slate-200 file:bg-slate-50 file:px-4 file:py-[10px] file:text-sm"
-                  id="file"
-                  onChange={(event) => setFile(event.target.files?.[0] ?? null)}
-                  type="file"
-                />
-                <p className="mt-2 text-[15px] text-[#8d80bb]">
-                  Download Sample Format :{" "}
-                  <a className="text-[#1d4ed8]" href="/sample-documents.csv">
-                    CSV
-                  </a>
-                </p>
-              </div>
+              <input
+                accept=".csv,text/csv"
+                className="sr-only"
+                id="file"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] ?? null);
+                  setCsvError("");
+                }}
+                type="file"
+              />
+            
             </div>
 
-            {errors.form ? (
-              <div className="reference-form-grid">
-                <div />
-                <p className="text-sm text-red-600">{errors.form}</p>
-              </div>
+            {csvError ? (
+              <p className="mt-3 text-sm text-red-600">{csvError}</p>
             ) : null}
+          </div>
 
-            <div className="reference-form-grid border-t border-slate-100 pt-6">
-              <div />
-              <div className="flex justify-end gap-2">
-                <button
-                  className="rounded-lg border border-slate-200 bg-slate-500 px-6 py-3 text-sm font-semibold text-white hover:bg-slate-600"
-                  onClick={handleBack}
-                  type="button"
-                >
-                  Back
-                </button>
-                <button
-                  className="rounded-lg border border-lime-700 bg-lime-600 px-6 py-3 text-sm font-semibold text-white hover:bg-lime-700 disabled:opacity-60"
-                  disabled={isSaving}
-                  type="submit"
-                >
-                  {isSaving ? "Saving..." : "Save"}
-                </button>
-              </div>
-            </div>
-          </form>
+          <div className="mt-6 flex flex-wrap items-center justify-end gap-2 border-t border-slate-100 pt-5">
+            <button
+              className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+              onClick={resetAllInputs}
+              type="button"
+            >
+              Clear all
+            </button>
+            <button
+              className="h-11 rounded-xl border border-emerald-700 bg-emerald-600 px-5 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+              disabled={isPrimaryLoading}
+              onClick={handlePrimaryAction}
+              type="button"
+            >
+              {primaryLabel}
+            </button>
+          </div>
         </section>
       </div>
 
       {isSearchOpen ? (
         <div
           aria-hidden="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4 py-8 backdrop-blur-[2px]"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-8 backdrop-blur-[3px]"
           onClick={closeSearchModal}
         >
           <div
-            aria-labelledby="search-dialog-title"
             aria-modal="true"
-            className="flex max-h-[80vh] min-h-[430px] w-full max-w-3xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_30px_80px_rgba(15,23,42,0.18)]"
+            className="flex max-h-[82vh] min-h-[430px] w-full max-w-4xl flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-[0_35px_90px_rgba(15,23,42,0.2)]"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
           >
             <div className="flex items-start justify-between gap-4 border-b border-slate-100 px-6 py-5">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
-                  Search
+                  Search Results
                 </p>
-                <h2
-                  className="mt-2 text-lg font-semibold text-slate-900"
-                  id="search-dialog-title"
-                >
-                  {modalHeading}
-                </h2>
-                <p className="mt-2 text-sm text-slate-500">{modalSubheading}</p>
+                <p className="mt-2 text-sm text-slate-500">
+                  Query: {searchQuery || "-"}
+                </p>
               </div>
               <button
                 aria-label="Close search"
-                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-sm font-semibold text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
+                className="flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
                 onClick={closeSearchModal}
                 type="button"
               >
@@ -554,75 +503,26 @@ export function ReferenceFormPage() {
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto border-t border-slate-100 px-6 py-5">
+            <div className="flex-1 overflow-y-auto px-6 py-5">
+              {isSearching ? (
+                <p className="text-sm text-slate-500">Searching...</p>
+              ) : null}
+              {searchError ? (
+                <p className="text-sm text-red-600">{searchError}</p>
+              ) : null}
+              {hasSearched &&
+              !isSearching &&
+              searchResults.length === 0 &&
+              !searchError ? (
+                <p className="text-sm text-slate-500">
+                  No matching records found.
+                </p>
+              ) : null}
+
               <div className="space-y-4">
-                {isViewingAllEntries ? (
-                  <div className="border-b border-slate-100 pb-4">
-                    <input
-                      className="h-[42px] w-full rounded-md border border-slate-200 bg-white px-4 text-sm outline-none ring-0 transition focus:border-slate-400"
-                      onChange={(event) => setAllEntriesQuery(event.target.value)}
-                      placeholder="Filter by title, URL, or content"
-                      value={allEntriesQuery}
-                    />
-                  </div>
-                ) : null}
-
-                {isViewingAllEntries && isLoadingEntries ? (
-                  <p className="text-sm text-slate-500">Loading entries...</p>
-                ) : null}
-
-                {!isViewingAllEntries && isSearching ? (
-                  <p className="text-sm text-slate-500">Searching...</p>
-                ) : null}
-
-                {!isViewingAllEntries && !hasSearched && !isSearching ? (
-                  <p className="text-sm text-slate-500">
-                    Search results will appear here after you run a query.
-                  </p>
-                ) : null}
-
-                {!isViewingAllEntries && searchError ? (
-                  <p className="text-sm text-red-600">{searchError}</p>
-                ) : null}
-
-                {isViewingAllEntries && allEntriesError ? (
-                  <p className="text-sm text-red-600">{allEntriesError}</p>
-                ) : null}
-
-                {!isViewingAllEntries &&
-                hasSearched &&
-                !isSearching &&
-                searchResults.length === 0 &&
-                !searchError ? (
-                  <p className="text-sm text-slate-500">
-                    No matching records were found.
-                  </p>
-                ) : null}
-
-                {isViewingAllEntries &&
-                hasLoadedEntries &&
-                !isLoadingEntries &&
-                allEntries.length === 0 &&
-                !allEntriesError ? (
-                  <p className="text-sm text-slate-500">
-                    No entries were found in the database.
-                  </p>
-                ) : null}
-
-                {isViewingAllEntries &&
-                hasLoadedEntries &&
-                !isLoadingEntries &&
-                allEntries.length > 0 &&
-                filteredAllEntries.length === 0 ? (
-                  <p className="text-sm text-slate-500">
-                    No entries match this filter.
-                  </p>
-                ) : null}
-
-                {(isViewingAllEntries ? filteredAllEntries : searchResults).map(
-                  (result) => (
+                {searchResults.map((result) => (
                   <article
-                    className="rounded-xl border border-slate-200 bg-slate-50/60 px-5 py-4"
+                    className="rounded-2xl border border-slate-200 bg-slate-50/75 px-5 py-4"
                     key={result.id ?? result.title}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -635,13 +535,11 @@ export function ReferenceFormPage() {
                         aria-label={`Delete ${result.title}`}
                         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-rose-200 bg-white text-rose-500 transition hover:border-rose-300 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-60"
                         disabled={isDeletingId === result.id || !result.id}
-                        onClick={() => openDeleteConfirmation(result)}
+                        onClick={() => setDeleteCandidate(result)}
                         type="button"
                       >
                         {isDeletingId === result.id ? (
-                          <span className="text-[11px] font-semibold">
-                            ...
-                          </span>
+                          <span className="text-[11px] font-semibold">...</span>
                         ) : (
                           <Trash2 className="h-4 w-4" />
                         )}
@@ -650,9 +548,9 @@ export function ReferenceFormPage() {
                     <p className="mt-2 text-sm leading-6 text-slate-600">
                       {result.content}
                     </p>
-                    {isViewingAllEntries ? (
+                    {result.url ? (
                       <a
-                        className="mt-3 inline-block text-sm font-medium text-[#1d4ed8]"
+                        className="mt-3 inline-block text-sm font-medium text-sky-700"
                         href={result.url}
                         rel="noreferrer"
                         target="_blank"
@@ -661,8 +559,7 @@ export function ReferenceFormPage() {
                       </a>
                     ) : null}
                   </article>
-                  ),
-                )}
+                ))}
               </div>
             </div>
           </div>
@@ -673,10 +570,9 @@ export function ReferenceFormPage() {
         <div
           aria-hidden="true"
           className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/35 px-4 backdrop-blur-[2px]"
-          onClick={closeDeleteConfirmation}
+          onClick={() => setDeleteCandidate(null)}
         >
           <div
-            aria-labelledby="delete-dialog-title"
             aria-modal="true"
             className="w-full max-w-md rounded-[22px] border border-slate-200 bg-white p-6 shadow-[0_24px_70px_rgba(15,23,42,0.18)]"
             onClick={(event) => event.stopPropagation()}
@@ -687,35 +583,30 @@ export function ReferenceFormPage() {
                 <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-slate-400">
                   Confirm Delete
                 </p>
-                <h3
-                  className="mt-2 text-lg font-semibold text-slate-900"
-                  id="delete-dialog-title"
-                >
+                <h3 className="mt-2 text-lg font-semibold text-slate-900">
                   Delete entry
                 </h3>
               </div>
               <button
                 aria-label="Close delete confirmation"
                 className="flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-300 hover:text-slate-900"
-                onClick={closeDeleteConfirmation}
+                onClick={() => setDeleteCandidate(null)}
                 type="button"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-
             <p className="mt-4 text-sm leading-6 text-slate-600">
-              Are you sure you want to delete{" "}
+              Delete{" "}
               <span className="font-semibold text-slate-900">
                 {deleteCandidate.title}
               </span>
               ?
             </p>
-
             <div className="mt-6 flex justify-end gap-3">
               <button
                 className="h-10 rounded-md border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                onClick={closeDeleteConfirmation}
+                onClick={() => setDeleteCandidate(null)}
                 type="button"
               >
                 Cancel
