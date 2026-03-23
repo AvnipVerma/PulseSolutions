@@ -4,6 +4,7 @@ import { FileUp, Search, Trash2, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { logDebug } from "@/lib/utils/debug";
 import { manualDocumentSchema } from "@/lib/validators/document";
 import { searchSchema } from "@/lib/validators/search";
 
@@ -50,6 +51,7 @@ export function ReferenceFormPage() {
   const [isUploadingCsv, setIsUploadingCsv] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeSearchQuery, setActiveSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState([]);
   const [searchError, setSearchError] = useState("");
   const [searchFieldError, setSearchFieldError] = useState("");
@@ -173,6 +175,11 @@ export function ReferenceFormPage() {
         return;
       }
 
+      logDebug("reference-form", "Submitting CSV upload.", {
+        fileName: file.name,
+        fileSize: file.size,
+      });
+
       const formPayload = new FormData();
       formPayload.append("file", file);
 
@@ -185,6 +192,12 @@ export function ReferenceFormPage() {
       if (!response.ok || !payload.success) {
         throw new Error(payload.message ?? "Upload failed.");
       }
+
+      logDebug("reference-form", "CSV upload completed.", {
+        insertedCount: payload.data?.insertedCount ?? 0,
+        duplicateCount: payload.data?.duplicateCount ?? 0,
+        vectorSyncQueued: Boolean(payload.data?.vectorSyncQueued),
+      });
 
       const message = `Batch upload complete: ${payload.data.insertedCount} records saved.`;
 
@@ -202,6 +215,9 @@ export function ReferenceFormPage() {
 
       resetCsvForm();
     } catch (error) {
+      logDebug("reference-form", "CSV upload failed.", {
+        cause: error instanceof Error ? error.message : String(error),
+      });
       setCsvError(error instanceof Error ? error.message : "Upload failed.");
     } finally {
       setIsUploadingCsv(false);
@@ -233,12 +249,20 @@ export function ReferenceFormPage() {
       return;
     }
 
+    const submittedQuery = validation.data.query;
+
+    setActiveSearchQuery(submittedQuery);
     setIsSearchOpen(true);
     setIsSearching(true);
     setSearchResults([]);
     setSearchError("");
     setSearchFieldError("");
     setHasSearched(true);
+
+    logDebug("reference-form", "Submitting search.", {
+      query: submittedQuery,
+      limit: validation.data.limit,
+    });
 
     try {
       const response = await fetch("/api/search", {
@@ -254,8 +278,17 @@ export function ReferenceFormPage() {
         throw new Error(payload.message ?? "Search failed.");
       }
 
-      setSearchResults(payload.data ?? []);
+      const results = payload.data ?? [];
+      logDebug("reference-form", "Search completed.", {
+        query: submittedQuery,
+        resultCount: results.length,
+      });
+      setSearchResults(results);
     } catch (error) {
+      logDebug("reference-form", "Search failed.", {
+        query: submittedQuery,
+        cause: error instanceof Error ? error.message : String(error),
+      });
       setSearchResults([]);
       setSearchError(error instanceof Error ? error.message : "Search failed.");
     } finally {
@@ -490,7 +523,7 @@ export function ReferenceFormPage() {
                   Search Results
                 </p>
                 <p className="mt-2 text-sm text-slate-500">
-                  Query: {searchQuery || "-"}
+                  Query: {activeSearchQuery || "-"}
                 </p>
               </div>
               <button

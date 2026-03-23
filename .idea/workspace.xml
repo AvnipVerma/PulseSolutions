@@ -6,7 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="7946a568-63ec-4b22-a3da-6baeb6b42f29" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/lib/services/vector-service.js" beforeDir="false" afterPath="$PROJECT_DIR$/lib/services/vector-service.js" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -87,7 +86,8 @@
       <updated>1774078795366</updated>
       <workItem from="1774078796991" duration="26324000" />
       <workItem from="1774174004546" duration="774000" />
-      <workItem from="1774206733009" duration="547000" />
+      <workItem from="1774206733009" duration="2536000" />
+      <workItem from="1774273438603" duration="351000" />
     </task>
     <servers />
   </component>
